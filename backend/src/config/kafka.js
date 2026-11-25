@@ -66,7 +66,7 @@ async function ensureOrdersTopicExists(numPartitions = 3) {
     }
   } catch (err) {
     console.warn(
-      `[Kafka] Topic auto-creation skipped (${err.message}). If using managed Kafka (Upstash/Aiven), ensure "${config.kafka.ordersTopic}" exists.`
+      `[Kafka] Topic auto-creation skipped (${err.message}). If using managed Kafka (e.g. Aiven), ensure "${config.kafka.ordersTopic}" exists.`
     );
   } finally {
     await admin.disconnect().catch(() => {});

@@ -48,7 +48,7 @@ flowchart LR
 
 ### Prerequisites
 - Node.js 20+
-- Docker Desktop (for local PostgreSQL 16 + Redpanda Kafka broker + Redpanda Console), **or** cloud PostgreSQL (Neon/Supabase) + Cloud Kafka (Aiven/Upstash).
+- Docker Desktop (for local PostgreSQL 16 + Redpanda Kafka broker + Redpanda Console), **or** cloud PostgreSQL (Neon/Supabase) + Cloud Kafka (Aiven).
 
 ### Step 1: Configure Environment
 ```bash
@@ -124,11 +124,11 @@ Measured via `npm run benchmark:coldstart`:
 
 ---
 
-## 5. Cloud Deployment Guide (Vercel + Render/Railway + Aiven/Upstash)
+## 5. Cloud Deployment Guide (Vercel + Render/Railway + Aiven)
 
 1. **PostgreSQL:** Provision a managed Postgres DB on **Neon**, **Supabase**, or **Render PostgreSQL** (`PG_SSL=true`). Run `npm run migrate && npm run seed` against `DATABASE_URL`.
-2. **Cloud Kafka (Aiven / Upstash):**
-   - Create a Kafka service on **Aiven for Apache Kafka** (or Upstash Kafka) and create topic `tenant.orders` with **3 partitions**.
+2. **Cloud Kafka (Aiven for Apache Kafka):**
+   - Create a free **Aiven for Apache Kafka** service and a topic `tenant.orders` with as many partitions as the plan allows (**3 locally, 2 on the Aiven free tier**).
    - Set `KAFKA_BROKERS`, `KAFKA_SSL=true`, `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME`, `KAFKA_SASL_PASSWORD` (and `KAFKA_CA_CERT_BASE64` if using Aiven's CA certificate).
 3. **Serverless Worker + Frontend on Vercel:**
    - Deploy the repository root to **Vercel** (`vercel.json` builds `frontend/dist` and exposes `/api/invoice-worker` as a Node.js Serverless Function).
@@ -138,7 +138,7 @@ Measured via `npm run benchmark:coldstart`:
 
 ---
 
-### 5.1 Deployment Runbook — Render (API) + Neon (Postgres) + Upstash (Kafka) + Vercel (Web + Serverless)
+### 5.1 Deployment Runbook — Render (API) + Neon (Postgres) + Aiven (Kafka) + Vercel (Web + Serverless)
 
 Deploy in this order: every step produces a URL that the next step consumes. Secrets live in the platform dashboards, **never** in `.env` committed to git.
 
@@ -152,12 +152,19 @@ DATABASE_URL="postgresql://user:pass@host/db?sslmode=require" PG_SSL=true npm ru
 DATABASE_URL="postgresql://user:pass@host/db?sslmode=require" PG_SSL=true npm run seed 50000
 ```
 
-#### Step 2 — Cloud Kafka (Upstash Kafka or Aiven for Apache Kafka)
+#### Step 2 — Cloud Kafka (Aiven for Apache Kafka, free tier)
 
-- Create topic `tenant.orders` with **3 partitions**; the message key is `tenant_id`, so a tenant's events stay ordered inside one partition.
-- Upstash: `KAFKA_SSL=true`, `KAFKA_SASL_MECHANISM=scram-sha-256`.
-- Aiven: additionally set `KAFKA_CA_CERT_BASE64` (base64 of the service CA PEM).
-- The consumer auto-creates the topic when the broker permits it; on managed Kafka create it manually.
+> **Upstash Kafka is not an option:** it was deprecated on 11 Sep 2024 and discontinued on 11 Mar 2025. Use Aiven's free tier instead — 250 KiB/s throughput, 3-day retention, and **5 topics with 2 partitions each** (one free Kafka service per organisation, no credit card).
+
+1. Create the free Kafka service (region group only; the cloud/region is chosen for you) and copy the **Service URI** host:port into `KAFKA_BROKERS`.
+2. Create topic `tenant.orders` manually in the console with **2 partitions** — the free plan caps a topic at 2 and restricts topic config, so the app's auto-creation (which requests 3) will be skipped. The local Docker demo keeps 3 partitions; the message key is still `tenant_id`, so a tenant's events stay ordered inside one partition either way.
+3. Under *Users & ACLs*, add a user with **SCRAM-SHA-256** credentials → `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD`.
+4. Set `KAFKA_SSL=true`, `KAFKA_SASL_MECHANISM=scram-sha-256`, and `KAFKA_CA_CERT_BASE64` to the base64 of Aiven's CA PEM (shown under *CA certificate*):
+
+```bash
+base64 -w0 aiven-ca.pem                 # Linux / macOS
+git bash: base64 -w0 aiven-ca.pem       # Windows (PowerShell: [Convert]::ToBase64String([IO.File]::ReadAllBytes('aiven-ca.pem')))
+```
 
 #### Step 3 — Backend API + Kafka consumer (Render)
 
@@ -186,12 +193,12 @@ DATABASE_URL="postgresql://user:pass@host/db?sslmode=require" PG_SSL=true npm ru
 | `JWT_EXPIRES_IN` | `8h` | — | — | |
 | `CORS_ORIGIN` | `https://<web>.vercel.app` | — | — | Exact origin; comma-separated for several |
 | `KAFKA_BROKERS` | `host:9092` | — | — | Secret |
-| `KAFKA_TOPIC_ORDERS` | `tenant.orders` | — | — | 3 partitions |
+| `KAFKA_TOPIC_ORDERS` | `tenant.orders` | — | — | 3 partitions local, 2 on Aiven free |
 | `KAFKA_CONSUMER_GROUP` | `order-processor-group` | — | — | |
 | `KAFKA_SSL` | `true` | — | — | Managed brokers |
-| `KAFKA_SASL_MECHANISM` | `scram-sha-256` | — | — | Upstash / Aiven |
+| `KAFKA_SASL_MECHANISM` | `scram-sha-256` | — | — | Aiven SCRAM user |
 | `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD` | broker credentials | — | — | Secrets |
-| `KAFKA_CA_CERT_BASE64` | Aiven only | — | — | Base64 of the CA PEM |
+| `KAFKA_CA_CERT_BASE64` | required on Aiven | — | — | Base64 of the CA PEM (`base64 -w0`) |
 | `SERVERLESS_INVOICE_URL` | `https://<web>.vercel.app/api/invoice-worker` | — | — | Blank = local in-process adapter |
 | `VITE_API_BASE_URL` | — | `https://<api>.onrender.com` | — | Build-time only; no `/api/v1` |
 | *(function itself)* | — | — | no env vars needed | Zero-dependency handler |

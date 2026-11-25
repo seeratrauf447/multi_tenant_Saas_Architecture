@@ -1,0 +1,80 @@
+# Render Blueprint — Multi-Tenant SaaS API + embedded Kafka consumer (CSC337 Lab 06)
+#
+# Usage: Render Dashboard → New + → Blueprint → pick this repository → apply.
+# Secrets marked `sync: false` are NOT stored in git; Render prompts for them on first apply.
+# The React console and the serverless invoice worker deploy separately to Vercel (README §5.1).
+
+services:
+  - type: web
+    name: cloudflow-api
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # The frontend is served by Vercel, so the API must not serve static files.
+      - key: SERVE_FRONTEND
+        value: "false"
+
+      # Runs the KafkaJS consumer inside the API process (single free-tier service).
+      # For a separate worker service instead, set this to "false" and add a second
+      # web/worker service with startCommand: npm run worker.
+      - key: RUN_EMBEDDED_CONSUMER
+        value: "true"
+
+      # Must exactly match the deployed frontend origin, e.g. https://cloudflow-web.vercel.app
+      - key: CORS_ORIGIN
+        sync: false
+
+      # Cloud PostgreSQL (Neon / Supabase / Render PostgreSQL) — include sslmode=require
+      - key: DATABASE_URL
+        sync: false
+      - key: PG_SSL
+        value: "true"
+      - key: PG_POOL_MAX
+        value: "20"
+      - key: PG_POOL_MIN
+        value: "2"
+      - key: PG_IDLE_TIMEOUT_MS
+        value: "30000"
+      - key: PG_CONNECTION_TIMEOUT_MS
+        value: "5000"
+
+      # Render generates a strong random secret on first apply
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: "8h"
+
+      # Cloud Kafka (Upstash Kafka / Aiven for Apache Kafka)
+      - key: KAFKA_CLIENT_ID
+        value: multitenant-saas-platform
+      - key: KAFKA_BROKERS
+        sync: false
+      - key: KAFKA_TOPIC_ORDERS
+        value: tenant.orders
+      - key: KAFKA_CONSUMER_GROUP
+        value: order-processor-group
+      - key: KAFKA_SSL
+        value: "true"
+      - key: KAFKA_SASL_MECHANISM
+        value: scram-sha-256
+      - key: KAFKA_SASL_USERNAME
+        sync: false
+      - key: KAFKA_SASL_PASSWORD
+        sync: false
+      # Aiven only — base64 of the service CA certificate. Leave unset for Upstash.
+      - key: KAFKA_CA_CERT_BASE64
+        sync: false
+
+      # Vercel serverless invoice worker, e.g. https://<app>.vercel.app/api/invoice-worker
+      # Leave unset to use the in-process local adapter.
+      - key: SERVERLESS_INVOICE_URL
+        sync: false

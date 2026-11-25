@@ -1,10 +1,21 @@
+const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { performance } = require('node:perf_hooks');
 const config = require('../config/env');
 
 const localWorkerPath = path.resolve(__dirname, '../../../api/invoice-worker.js');
-const { processInvoiceTask } = require(localWorkerPath);
+
+// Cloud deploys upload only backend/, so the repo-root worker file is absent
+// there. It is needed solely for local invocation, hence the lazy load.
+function loadLocalWorker() {
+  if (!fs.existsSync(localWorkerPath)) {
+    throw new Error(
+      `Local invoice worker not found at ${localWorkerPath}; set SERVERLESS_INVOICE_URL to use the remote worker`
+    );
+  }
+  return require(localWorkerPath);
+}
 
 /**
  * Invokes the serverless invoice worker:
@@ -89,6 +100,7 @@ async function invokeInvoiceWorker(payload, { forceColdStart = false } = {}) {
     });
   }
 
+  const { processInvoiceTask } = loadLocalWorker();
   const result = await processInvoiceTask(payload);
   return {
     ...result,

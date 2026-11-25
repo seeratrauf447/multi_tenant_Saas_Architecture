@@ -11,7 +11,15 @@ const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const diagnosticsRoutes = require('./routes/diagnosticsRoutes');
-const invoiceWorkerHandler = require('../../api/invoice-worker');
+// The worker module lives in the repo-root api/ folder, which is not part of a
+// backend-only upload (Railway ships backend/). In cloud mode the same handler
+// runs on Vercel, so the local mirror is registered only when the file exists.
+let invoiceWorkerHandler = null;
+try {
+  invoiceWorkerHandler = require('../../api/invoice-worker');
+} catch (err) {
+  if (err.code !== 'MODULE_NOT_FOUND') throw err;
+}
 
 const app = express();
 
@@ -37,7 +45,9 @@ app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/diagnostics', diagnosticsRoutes);
 
 // Local mirror of the Vercel Serverless Function (/api/invoice-worker)
-app.all('/api/invoice-worker', (req, res) => invoiceWorkerHandler(req, res));
+if (invoiceWorkerHandler) {
+  app.all('/api/invoice-worker', (req, res) => invoiceWorkerHandler(req, res));
+}
 
 // Optional static frontend serving for single-service Render/Railway deployment
 const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');

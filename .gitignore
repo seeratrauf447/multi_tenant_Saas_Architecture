@@ -8,3 +8,15 @@ build/
 coverage/
 .vercel/
 .cloud-attachments/
+
+# local deploy credentials — never commit these
+.railway-token
+.neon-token
+.vercel-token
+.aiven-token
+.deploy.env
+.deploy-tools/
+aiven-ca.pem
+
+.vercel
+.env*
